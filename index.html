@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Roommate</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <style>
+    .typing-indicator {
+      display: none;
+      font-style: italic;
+      color: #666;
+    }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <div class="container mx-auto p-4">
+    <h1 class="text-3xl font-bold text-center text-blue-600 mb-6">Your AI Roommate</h1>
+
+    <!-- Navigation Buttons -->
+    <div class="flex justify-around mb-6">
+      <button onclick="showSection('chat')" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">AI Chat</button>
+      <button onclick="showSection('tasks')" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Tasks</button>
+      <button onclick="showSection('mood')" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Mood</button>
+    </div>
+
+    <!-- Chat Section -->
+    <div id="chat" class="section">
+      <div class="chat-window bg-white p-4 rounded shadow mb-4 h-64 overflow-y-auto">
+        <div id="chat-messages"></div>
+        <div id="typing-indicator" class="typing-indicator">AI is typing...</div>
+      </div>
+      <input type="text" id="message-input" class="w-full p-2 border rounded mb-2" placeholder="Type a message...">
+      <button onclick="sendMessage()" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Send</button>
+    </div>
+
+    <!-- Tasks Section -->
+    <div id="tasks" class="section hidden">
+      <h2 class="text-2xl font-bold mb-4">Task Reminders</h2>
+      <form onsubmit="addTask(event)" class="mb-4">
+        <input type="text" id="task-input" class="w-full p-2 border rounded mb-2" placeholder="Add a task...">
+        <input type="date" id="task-date" class="w-full p-2 border rounded mb-2">
+        <button type="submit" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Add Task</button>
+      </form>
+      <ul id="task-list"></ul>
+    </div>
+
+    <!-- Mood Section -->
+    <div id="mood" class="section hidden">
+      <h2 class="text-2xl font-bold mb-4">Mood Tracker</h2>
+      <form onsubmit="setMood(event)" class="mb-4">
+        <select id="mood-tracker" class="w-full p-2 border rounded mb-2">
+          <option value="happy">Happy</option>
+          <option value="sad">Sad</option>
+          <option value="neutral">Neutral</option>
+        </select>
+        <button type="submit" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Set Mood</button>
+      </form>
+      <canvas id="mood-chart" class="w-full"></canvas>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const chatMessages = document.getElementById("chat-messages");
+    const messageInput = document.getElementById("message-input");
+    const typingIndicator = document.getElementById("typing-indicator");
+    const taskList = document.getElementById("task-list");
+    const moodChartCtx = document.getElementById("mood-chart").getContext("2d");
+
+    let moodChart;
+
+    function showSection(sectionId) {
+      document.querySelectorAll(".section").forEach(section => {
+        section.classList.add("hidden");
+      });
+      document.getElementById(sectionId).classList.remove("hidden");
+    }
+
+    async function sendMessage() {
+      const message = messageInput.value.trim();
+      if (!message) return;
+
+      appendMessage(`You: ${message}`, true);
+      typingIndicator.style.display = "block";
+
+      try {
+        const response = await axios.post("http://localhost:5000/chat", { message });
+        appendMessage(`AI: ${response.data.message}`, false);
+      } catch (error) {
+        console.error("Error:", error);
+      } finally {
+        typingIndicator.style.display = "none";
+        messageInput.value = "";
+      }
+    }
+
+    function appendMessage(message, isUser) {
+      const div = document.createElement("div");
+      div.className = isUser ? "text-right mb-2" : "text-left mb-2";
+      div.textContent = message;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    async function addTask(event) {
+      event.preventDefault();
+      const task = document.getElementById("task-input").value.trim();
+      const date = document.getElementById("task-date").value;
+
+      if (!task) return;
+
+      try {
+        await axios.post("http://localhost:5000/add-task", { task, date });
+        fetchTasks();
+      } catch (error) {
+        console.error("Error:", error);
+      }
+    }
+
+    async function fetchTasks() {
+      try {
+        const response = await axios.get("http://localhost:5000/get-tasks");
+        taskList.innerHTML = response.data.tasks.map(task => `
+          <li class="bg-white p-2 rounded shadow mb-2">
+            <span>${task.task} (${task.date})</span>
+            <button onclick="deleteTask(${task.id})" class="text-red-500">Delete</button>
+          </li>
+        `).join("");
+      } catch (error) {
+        console.error("Error:", error);
+      }
+    }
+
+    async function deleteTask(taskId) {
+      try {
+        await axios.delete(`http://localhost:5000/delete-task/${taskId}`);
+        fetchTasks();
+      } catch (error) {
+        console.error("Error:", error);
+      }
+    }
+
+    async function setMood(event) {
+      event.preventDefault();
+      const mood = document.getElementById("mood-tracker").value;
+
+      try {
+        await axios.post("http://localhost:5000/set-mood", { mood });
+        fetchMoodHistory();
+      } catch (error) {
+        console.error("Error:", error);
+      }
+    }
+
+    async function fetchMoodHistory() {
+      try {
+        const response = await axios.get("http://localhost:5000/get-mood-history");
+        const moods = response.data.mood_history;
+
+        const moodData = moods.reduce((acc, curr) => {
+          acc[curr.mood] = (acc[curr.mood] || 0) + 1;
+          return acc;
+        }, {});
+
+        if (moodChart) moodChart.destroy();
+
+        moodChart = new Chart(moodChartCtx, {
+          type: "bar",
+          data: {
+            labels: Object.keys(moodData),
+            datasets: [{
+              label: "Mood Count",
+              data: Object.values(moodData),
+              backgroundColor: ["#4ade80", "#f87171", "#60a5fa"],
+            }],
+          },
+        });
+      } catch (error) {
+        console.error("Error:", error);
+      }
+    }
+
+    showSection("chat");
+  </script>
+</body>
+</html>
